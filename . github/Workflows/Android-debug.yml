@@ -1,0 +1,64 @@
+name: Android debug APK from ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    name: Build BR Hub debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract complete project ZIP
+        run: |
+          test -f br-hub-android-project.zip
+          mkdir -p project-source
+          unzip -oq br-hub-android-project.zip -d project-source
+          test -f project-source/package.json
+          test -f project-source/android/gradlew
+          test -f project-source/web/index.html
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and build tools
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install Node dependencies and sync Capacitor
+        working-directory: project-source
+        run: |
+          npm ci
+          npm run cap:sync
+
+      - name: Assemble debug APK
+        working-directory: project-source/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: br-hub-debug-apk
+          path: project-source/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+          
